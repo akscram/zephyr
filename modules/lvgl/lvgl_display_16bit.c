@@ -23,6 +23,9 @@ void lvgl_flush_cb_16bit(lv_disp_drv_t *disp_drv, const lv_area_t *area, lv_colo
 	flush.desc.pitch = w;
 	flush.desc.height = h;
 	flush.buf = (void *)color_p;
+#ifdef CONFIG_LV_COLOR_16_SWAP
+	lv_draw_sw_rgb565_swap(flush.buf, flush.desc.buf_size);
+#endif
 	lvgl_flush_display(&flush);
 }
 
