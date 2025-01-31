@@ -67,25 +67,32 @@ static void st7789v_set_lcd_margins(const struct device *dev,
 	data->y_offset = y_offset;
 }
 
-static void st7789v_transmit(const struct device *dev, uint8_t cmd,
-			     uint8_t *tx_data, size_t tx_count)
+static int st7789v_transmit(const struct device *dev, uint8_t cmd,
+			    uint8_t *tx_data, size_t tx_count)
 {
 	const struct st7789v_config *config = dev->config;
 
-	mipi_dbi_command_write(config->mipi_dbi, &config->dbi_config, cmd,
-			       tx_data, tx_count);
+	return mipi_dbi_command_write(config->mipi_dbi, &config->dbi_config,
+				      cmd, tx_data, tx_count);
 }
 
-static void st7789v_exit_sleep(const struct device *dev)
+static int st7789v_exit_sleep(const struct device *dev)
 {
-	st7789v_transmit(dev, ST7789V_CMD_SLEEP_OUT, NULL, 0);
+	int ret = 0;
+
+	ret = st7789v_transmit(dev, ST7789V_CMD_SLEEP_OUT, NULL, 0);
+	if (ret < 0) {
+		return ret;
+	}
+
 	k_sleep(K_MSEC(120));
+	return ret;
 }
 
-static void st7789v_reset_display(const struct device *dev)
+static int st7789v_reset_display(const struct device *dev)
 {
 	const struct st7789v_config *config = dev->config;
-	int ret;
+	int ret = 0;
 
 	LOG_DBG("Resetting display");
 
@@ -93,26 +100,29 @@ static void st7789v_reset_display(const struct device *dev)
 	ret = mipi_dbi_reset(config->mipi_dbi, 6);
 	if (ret == -ENOTSUP) {
 		/* Send software reset command */
-		st7789v_transmit(dev, ST7789V_CMD_SW_RESET, NULL, 0);
+		ret = st7789v_transmit(dev, ST7789V_CMD_SW_RESET, NULL, 0);
+		if (ret < 0) {
+			return ret;
+		}
 		k_sleep(K_MSEC(5));
 	} else {
 		k_sleep(K_MSEC(20));
 	}
+
+	return ret;
 }
 
 static int st7789v_blanking_on(const struct device *dev)
 {
-	st7789v_transmit(dev, ST7789V_CMD_DISP_OFF, NULL, 0);
-	return 0;
+	return st7789v_transmit(dev, ST7789V_CMD_DISP_OFF, NULL, 0);
 }
 
 static int st7789v_blanking_off(const struct device *dev)
 {
-	st7789v_transmit(dev, ST7789V_CMD_DISP_ON, NULL, 0);
-	return 0;
+	return st7789v_transmit(dev, ST7789V_CMD_DISP_ON, NULL, 0);
 }
 
-static void st7789v_set_mem_area(const struct device *dev, const uint16_t x,
+static int st7789v_set_mem_area(const struct device *dev, const uint16_t x,
 				 const uint16_t y, const uint16_t w, const uint16_t h)
 {
 	struct st7789v_data *data = dev->data;
@@ -121,13 +131,18 @@ static void st7789v_set_mem_area(const struct device *dev, const uint16_t x,
 	uint16_t ram_x = x + data->x_offset;
 	uint16_t ram_y = y + data->y_offset;
 
+	int ret = 0;
+
 	spi_data[0] = sys_cpu_to_be16(ram_x);
 	spi_data[1] = sys_cpu_to_be16(ram_x + w - 1);
-	st7789v_transmit(dev, ST7789V_CMD_CASET, (uint8_t *)&spi_data[0], 4);
+	ret = st7789v_transmit(dev, ST7789V_CMD_CASET, (uint8_t *)&spi_data[0], 4);
+	if (ret < 0) {
+		return ret;
+	}
 
 	spi_data[0] = sys_cpu_to_be16(ram_y);
 	spi_data[1] = sys_cpu_to_be16(ram_y + h - 1);
-	st7789v_transmit(dev, ST7789V_CMD_RASET, (uint8_t *)&spi_data[0], 4);
+	return st7789v_transmit(dev, ST7789V_CMD_RASET, (uint8_t *)&spi_data[0], 4);
 }
 
 static int st7789v_write(const struct device *dev,
@@ -142,6 +157,7 @@ static int st7789v_write(const struct device *dev,
 	uint16_t nbr_of_writes;
 	uint16_t write_h;
 	enum display_pixel_format pixfmt;
+	int ret = 0;
 
 	__ASSERT(desc->width <= desc->pitch, "Pitch is smaller than width");
 	__ASSERT((desc->pitch * ST7789V_PIXEL_SIZE * desc->height) <= desc->buf_size,
@@ -149,7 +165,10 @@ static int st7789v_write(const struct device *dev,
 
 	LOG_DBG("Writing %dx%d (w,h) @ %dx%d (x,y)",
 		desc->width, desc->height, x, y);
-	st7789v_set_mem_area(dev, x, y, desc->width, desc->height);
+	ret = st7789v_set_mem_area(dev, x, y, desc->width, desc->height);
+	if (ret < 0) {
+		return ret;
+	}
 
 	if (desc->pitch > desc->width) {
 		write_h = 1U;
@@ -175,16 +194,22 @@ static int st7789v_write(const struct device *dev,
 	mipi_desc.pitch = desc->width;
 
 	/* Send RAMWR command */
-	st7789v_transmit(dev, ST7789V_CMD_RAMWR, NULL, 0);
+	ret = st7789v_transmit(dev, ST7789V_CMD_RAMWR, NULL, 0);
+	if (ret < 0) {
+		return ret;
+	}
 
 	for (uint16_t write_cnt = 0U; write_cnt < nbr_of_writes; ++write_cnt) {
-		mipi_dbi_write_display(config->mipi_dbi, &config->dbi_config,
-				       write_data_start, &mipi_desc, pixfmt);
+		ret = mipi_dbi_write_display(config->mipi_dbi, &config->dbi_config,
+					     write_data_start, &mipi_desc, pixfmt);
+		if (ret < 0) {
+			return ret;
+		}
 
 		write_data_start += (desc->pitch * ST7789V_PIXEL_SIZE);
 	}
 
-	return 0;
+	return ret;
 }
 
 static void st7789v_get_capabilities(const struct device *dev,
@@ -235,18 +260,22 @@ static int st7789v_set_orientation(const struct device *dev,
 	return -ENOTSUP;
 }
 
-static void st7789v_lcd_init(const struct device *dev)
+static int st7789v_lcd_init(const struct device *dev)
 {
 	struct st7789v_data *data = dev->data;
 	const struct st7789v_config *config = dev->config;
 	uint8_t tmp;
+	int ret = 0;
 
 	st7789v_set_lcd_margins(dev, data->x_offset,
 				data->y_offset);
 
-	st7789v_transmit(dev, ST7789V_CMD_CMD2EN,
-			 (uint8_t *)config->cmd2en_param,
-			 sizeof(config->cmd2en_param));
+	ret = st7789v_transmit(dev, ST7789V_CMD_CMD2EN,
+			       (uint8_t *)config->cmd2en_param,
+			       sizeof(config->cmd2en_param));
+	if (ret != 0) {
+		return ret;
+	}
 
 	st7789v_transmit(dev, ST7789V_CMD_PORCTRL,
 			 (uint8_t *)config->porch_param,
@@ -316,26 +345,44 @@ static void st7789v_lcd_init(const struct device *dev)
 	st7789v_transmit(dev, ST7789V_CMD_RGBCTRL,
 			 (uint8_t *)config->rgb_param,
 			 sizeof(config->rgb_param));
+	return ret;
 }
 
 static int st7789v_init(const struct device *dev)
 {
 	const struct st7789v_config *config = dev->config;
+	int ret = 0;
 
 	if (!device_is_ready(config->mipi_dbi)) {
 		LOG_ERR("MIPI DBI device not ready");
 		return -ENODEV;
 	}
 
-	st7789v_reset_display(dev);
+	ret = st7789v_reset_display(dev);
+	if (ret < 0) {
+		LOG_ERR("Failed to reset display (%d)", ret);
+		return ret;
+	}
 
-	st7789v_blanking_on(dev);
+	ret = st7789v_blanking_on(dev);
+	if (ret < 0) {
+		LOG_ERR("Failed to turn blanking on (%d)", ret);
+		return ret;
+	}
 
-	st7789v_lcd_init(dev);
+	ret = st7789v_lcd_init(dev);
+	if (ret < 0) {
+		LOG_ERR("Failed to init display (%d)", ret);
+		return ret;
+	}
 
-	st7789v_exit_sleep(dev);
+	ret = st7789v_exit_sleep(dev);
+	if (ret < 0) {
+		LOG_ERR("Failed to exit the sleep mode (%d)", ret);
+		return ret;
+	}
 
-	return 0;
+	return ret;
 }
 
 #ifdef CONFIG_PM_DEVICE
@@ -346,10 +393,10 @@ static int st7789v_pm_action(const struct device *dev,
 
 	switch (action) {
 	case PM_DEVICE_ACTION_RESUME:
-		st7789v_exit_sleep(dev);
+		ret = st7789v_exit_sleep(dev);
 		break;
 	case PM_DEVICE_ACTION_SUSPEND:
-		st7789v_transmit(dev, ST7789V_CMD_SLEEP_IN, NULL, 0);
+		ret = st7789v_transmit(dev, ST7789V_CMD_SLEEP_IN, NULL, 0);
 		break;
 	default:
 		ret = -ENOTSUP;
