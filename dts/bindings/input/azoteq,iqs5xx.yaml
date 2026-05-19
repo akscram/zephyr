@@ -1,0 +1,50 @@
+# Copyright (c) 2024 Ilia Kharin
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Azoteq IQS550/572/525-B000 trackpad controller which uses 16-bit register
+  addresses in I2C.
+
+compatible: "azoteq,iqs5xx"
+
+include: "i2c-device.yaml"
+
+properties:
+  rdy-gpios:
+    type: phandle-array
+    description: |
+      Interrupt GPIO connected to the Data Ready (RDY) IO pin. It indicates
+      when new data is available and ready to be read via the I2C communication
+      channel. Active high.
+  reset-gpios:
+    type: phandle-array
+    description: |
+      Reset GPIO connected to the NRST pin. Active low.
+  x-resolution:
+    type: int
+    default: 2048
+    description: |
+      The total X output range. The on-chip algorithm uses 256 points between
+      columns.
+  y-resolution:
+    type: int
+    default: 1792
+    description: |
+      The total Y output range. The on-chip algorithm uses 256 points between
+      rows.
+  palm-reject:
+    type: boolean
+    description: |
+      Enable palm rejection.
+  switch-xy:
+    type: boolean
+    description: |
+      Switch X and Y axes.
+  flip-x:
+    type: boolean
+    description: |
+      Flip X axis.
+  flip-y:
+    type: boolean
+    description: |
+      Flip Y axis.

@@ -1,0 +1,14 @@
+# Azoteq IQS5XX trackpad/touchscreen controller configuration options
+#
+# Copyright (c) 2024 Ilia Kharin
+# SPDX-License-Identifier: Apache-2.0
+
+config INPUT_IQS5XX
+	bool "Azoteq IQS550 / IQS572 / IQS525 trackpad controller"
+	default y
+	depends on DT_HAS_AZOTEQ_IQS5XX_ENABLED
+	select GPIO
+	select I2C
+	help
+	  Enable driver for multiple Azoteq trackpad/touchscreen controllers.
+	  The driver supports IQS572.
